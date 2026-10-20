@@ -16,6 +16,7 @@ function formatRoute(r) {
     stops: typeof r.stops === "string" ? JSON.parse(r.stops || "[]") : r.stops || [],
     waypoints: typeof r.waypoints === "string" ? JSON.parse(r.waypoints || "[]") : r.waypoints || [],
     streetsTraversed: typeof r.streetsTraversed === "string" ? JSON.parse(r.streetsTraversed || "[]") : r.streetsTraversed || [],
+    outAndBack: r.outAndBack !== undefined ? Boolean(r.outAndBack) : true,
   };
 }
 
@@ -189,20 +190,25 @@ router.post("/assign-to-bus", async (req, res, next) => {
       return res.status(404).json({ message: `Bus ${busId} not found.` });
     }
 
-    // Snap to road if requested or if waypoints provided
     let finalWaypoints = routeData.waypoints || [];
     let finalDistance = Number(routeData.distanceKm) || 15.0;
     let finalDuration = Number(routeData.estimatedDurationMin) || 35;
     let streetsTraversed = Array.isArray(routeData.streetsTraversed) ? routeData.streetsTraversed : [];
-    const isOutAndBack = Boolean(routeData.outAndBack);
+    const isOutAndBack = routeData.outAndBack !== undefined ? Boolean(routeData.outAndBack) : true;
 
-    if (routeData.autoSnapRoad || (finalWaypoints.length > 0 && finalWaypoints.length < 30)) {
-      const snapped = await computeRoadRoute(finalWaypoints, true, isOutAndBack);
-      finalWaypoints = snapped.waypoints;
-      finalDistance = snapped.distanceKm;
-      finalDuration = snapped.estimatedDurationMin;
-      if (snapped.streetsTraversed && snapped.streetsTraversed.length > 0) {
-        streetsTraversed = snapped.streetsTraversed;
+    if (routeData.autoSnapRoad) {
+      try {
+        const snapped = await computeRoadRoute(finalWaypoints, false, isOutAndBack);
+        if (snapped && snapped.waypoints && snapped.waypoints.length > 0) {
+          finalWaypoints = snapped.waypoints;
+          finalDistance = snapped.distanceKm;
+          finalDuration = snapped.estimatedDurationMin;
+          if (snapped.streetsTraversed && snapped.streetsTraversed.length > 0) {
+            streetsTraversed = snapped.streetsTraversed;
+          }
+        }
+      } catch (snapErr) {
+        console.warn("computeRoadRoute error in assign-to-bus:", snapErr.message);
       }
     }
 
@@ -216,15 +222,15 @@ router.post("/assign-to-bus", async (req, res, next) => {
     const routeName = routeData.name || `Dedicated Route for ${targetBus.busNumber}`;
     const routeCode = routeData.code || `R-${targetBus.busNumber.replace(/\D/g, "") || allRoutes.length + 101}`;
 
-    const stopsJson = JSON.stringify(finalStops);
-    const waypointsJson = JSON.stringify(finalWaypoints);
-    const streetsJson = JSON.stringify(streetsTraversed);
+    const stopsJson = typeof finalStops === "string" ? finalStops : JSON.stringify(finalStops);
+    const waypointsJson = typeof finalWaypoints === "string" ? finalWaypoints : JSON.stringify(finalWaypoints);
+    const streetsJson = typeof streetsTraversed === "string" ? streetsTraversed : JSON.stringify(streetsTraversed);
 
     await db.execute(
       `INSERT OR REPLACE INTO routes (
         id, name, code, color, status, distanceKm, estimatedDurationMin, operatingHours,
-        stops, waypoints, studentAssignedCount, activeBusId, streetsTraversed
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        stops, waypoints, studentAssignedCount, activeBusId, streetsTraversed, outAndBack
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         routeId,
         routeName,
@@ -239,6 +245,7 @@ router.post("/assign-to-bus", async (req, res, next) => {
         Number(routeData.studentAssignedCount) || 0,
         busId,
         streetsJson,
+        isOutAndBack ? 1 : 0,
       ]
     );
 
@@ -272,15 +279,22 @@ router.post("/", async (req, res, next) => {
     let distanceKm = Number(data.distanceKm) || 15.0;
     let estimatedDurationMin = Number(data.estimatedDurationMin) || 40;
     let streetsTraversed = Array.isArray(data.streetsTraversed) ? data.streetsTraversed : [];
+    const isOutAndBack = data.outAndBack !== undefined ? Boolean(data.outAndBack) : true;
 
-    // Road snap if waypoints were provided and not already dense
-    if (data.autoSnapRoad || (Array.isArray(finalWaypoints) && finalWaypoints.length > 0 && finalWaypoints.length < 40)) {
-      const snapped = await computeRoadRoute(finalWaypoints, true);
-      finalWaypoints = snapped.waypoints;
-      distanceKm = snapped.distanceKm;
-      estimatedDurationMin = snapped.estimatedDurationMin;
-      if (snapped.streetsTraversed) {
-        streetsTraversed = snapped.streetsTraversed;
+    // Road snap if explicitly requested
+    if (data.autoSnapRoad && Array.isArray(finalWaypoints) && finalWaypoints.length > 0) {
+      try {
+        const snapped = await computeRoadRoute(finalWaypoints, false, isOutAndBack);
+        if (snapped && snapped.waypoints && snapped.waypoints.length > 0) {
+          finalWaypoints = snapped.waypoints;
+          distanceKm = snapped.distanceKm;
+          estimatedDurationMin = snapped.estimatedDurationMin;
+          if (snapped.streetsTraversed) {
+            streetsTraversed = snapped.streetsTraversed;
+          }
+        }
+      } catch (snapErr) {
+        console.warn("computeRoadRoute error in POST /routes:", snapErr.message);
       }
     }
 
@@ -302,18 +316,19 @@ router.post("/", async (req, res, next) => {
       studentAssignedCount: Number(data.studentAssignedCount) || 0,
       activeBusId: data.activeBusId || null,
       streetsTraversed: streetsJson,
+      outAndBack: isOutAndBack ? 1 : 0,
     };
 
     await db.execute(
-      `INSERT INTO routes (
+      `INSERT OR REPLACE INTO routes (
         id, name, code, color, status, distanceKm, estimatedDurationMin, operatingHours,
-        stops, waypoints, studentAssignedCount, activeBusId, streetsTraversed
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        stops, waypoints, studentAssignedCount, activeBusId, streetsTraversed, outAndBack
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         newRoute.id, newRoute.name, newRoute.code, newRoute.color, newRoute.status,
         newRoute.distanceKm, newRoute.estimatedDurationMin, newRoute.operatingHours,
         newRoute.stops, newRoute.waypoints, newRoute.studentAssignedCount, newRoute.activeBusId,
-        newRoute.streetsTraversed
+        newRoute.streetsTraversed, newRoute.outAndBack
       ]
     );
 
@@ -344,14 +359,23 @@ router.put("/:id", async (req, res, next) => {
     let distanceKm = req.body.distanceKm !== undefined ? Number(req.body.distanceKm) : existing.distanceKm;
     let estimatedDurationMin = req.body.estimatedDurationMin !== undefined ? Number(req.body.estimatedDurationMin) : existing.estimatedDurationMin;
     let streetsTraversed = req.body.streetsTraversed !== undefined ? req.body.streetsTraversed : JSON.parse(existing.streetsTraversed || "[]");
+    const isOutAndBack = req.body.outAndBack !== undefined
+      ? Boolean(req.body.outAndBack)
+      : (existing.outAndBack !== undefined ? Boolean(existing.outAndBack) : true);
 
     if (req.body.autoSnapRoad && Array.isArray(finalWaypoints) && finalWaypoints.length > 0) {
-      const snapped = await computeRoadRoute(finalWaypoints, true);
-      finalWaypoints = snapped.waypoints;
-      distanceKm = snapped.distanceKm;
-      estimatedDurationMin = snapped.estimatedDurationMin;
-      if (snapped.streetsTraversed) {
-        streetsTraversed = snapped.streetsTraversed;
+      try {
+        const snapped = await computeRoadRoute(finalWaypoints, false, isOutAndBack);
+        if (snapped && snapped.waypoints && snapped.waypoints.length > 0) {
+          finalWaypoints = snapped.waypoints;
+          distanceKm = snapped.distanceKm;
+          estimatedDurationMin = snapped.estimatedDurationMin;
+          if (snapped.streetsTraversed) {
+            streetsTraversed = snapped.streetsTraversed;
+          }
+        }
+      } catch (snapErr) {
+        console.warn("computeRoadRoute error in PUT /routes:", snapErr.message);
       }
     }
 
@@ -370,17 +394,20 @@ router.put("/:id", async (req, res, next) => {
       stops: stopsJson,
       waypoints: waypointsJson,
       streetsTraversed: streetsJson,
+      outAndBack: isOutAndBack ? 1 : 0,
     };
 
     await db.execute(
       `UPDATE routes SET
         name = ?, code = ?, color = ?, status = ?, distanceKm = ?, estimatedDurationMin = ?,
-        operatingHours = ?, stops = ?, waypoints = ?, studentAssignedCount = ?, activeBusId = ?, streetsTraversed = ?
+        operatingHours = ?, stops = ?, waypoints = ?, studentAssignedCount = ?, activeBusId = ?,
+        streetsTraversed = ?, outAndBack = ?
        WHERE id = ?`,
       [
         updated.name, updated.code, updated.color, updated.status, Number(updated.distanceKm),
         Number(updated.estimatedDurationMin), updated.operatingHours, updated.stops, updated.waypoints,
-        Number(updated.studentAssignedCount), updated.activeBusId, updated.streetsTraversed, req.params.id
+        Number(updated.studentAssignedCount), updated.activeBusId, updated.streetsTraversed,
+        updated.outAndBack, req.params.id
       ]
     );
 

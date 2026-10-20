@@ -1,5 +1,10 @@
 import L from "leaflet";
 
+export const DEFAULT_MAP_CENTER = {
+  lat: 12.9716,
+  lng: 77.5946,
+};
+
 /**
  * Creates custom interactive DivIcon for buses with heading direction,
  * bus number label, and status-colored radar pulse (Zomato/Swiggy style smooth rider).

@@ -50,6 +50,7 @@ CREATE TABLE IF NOT EXISTS routes (
   studentAssignedCount INTEGER DEFAULT 0,
   activeBusId TEXT,
   streetsTraversed TEXT,
+  outAndBack INTEGER DEFAULT 1,
   createdAt TEXT DEFAULT CURRENT_TIMESTAMP
 );
 

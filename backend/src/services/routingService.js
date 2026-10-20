@@ -9,40 +9,25 @@ const UNIVERSITY_COORDINATES = {
  * Calculates a road-accurate driving route between coordinates using OpenStreetMap OSRM.
  * Supports outAndBack: true where the bus travels outward and returns along the EXACT same road.
  */
-async function computeRoadRoute(waypoints = [], enforceUniversityLoop = true, outAndBack = false) {
-  let points = waypoints.map((p) => {
-    if (Array.isArray(p)) return { lat: Number(p[0]), lng: Number(p[1]) };
-    return { lat: Number(p.lat), lng: Number(p.lng) };
-  });
+async function computeRoadRoute(waypoints = [], enforceUniversityLoop = false, outAndBack = false) {
+  let points = (waypoints || [])
+    .map((p) => {
+      if (Array.isArray(p)) return { lat: Number(p[0]), lng: Number(p[1]) };
+      if (p && typeof p === "object") return { lat: Number(p.lat), lng: Number(p.lng) };
+      return null;
+    })
+    .filter((p) => p && !isNaN(p.lat) && !isNaN(p.lng));
 
-  // Ensure first point is University Terminal
-  const startMatches =
-    points.length > 0 &&
-    Math.abs(points[0].lat - UNIVERSITY_COORDINATES.lat) < 0.0005 &&
-    Math.abs(points[0].lng - UNIVERSITY_COORDINATES.lng) < 0.0005;
-
-  if (!startMatches) {
-    points.unshift({ lat: UNIVERSITY_COORDINATES.lat, lng: UNIVERSITY_COORDINATES.lng });
-  }
-
-  // If NOT outAndBack, and enforceUniversityLoop is true, ensure last point is University
-  if (!outAndBack && enforceUniversityLoop) {
-    const endMatches =
-      points.length > 1 &&
-      Math.abs(points[points.length - 1].lat - UNIVERSITY_COORDINATES.lat) < 0.0005 &&
-      Math.abs(points[points.length - 1].lng - UNIVERSITY_COORDINATES.lng) < 0.0005;
-
-    if (!endMatches) {
-      points.push({ lat: UNIVERSITY_COORDINATES.lat, lng: UNIVERSITY_COORDINATES.lng });
-    }
-  }
-
-  // Need at least 2 points
+  // If no points or only 1 point, provide reasonable fallback
   if (points.length < 2) {
-    points = [
-      { lat: UNIVERSITY_COORDINATES.lat, lng: UNIVERSITY_COORDINATES.lng },
-      { lat: 12.9820, lng: 77.6180 },
-    ];
+    if (points.length === 1) {
+      points.push({ lat: points[0].lat + 0.01, lng: points[0].lng + 0.01 });
+    } else {
+      points = [
+        { lat: UNIVERSITY_COORDINATES.lat, lng: UNIVERSITY_COORDINATES.lng },
+        { lat: UNIVERSITY_COORDINATES.lat + 0.015, lng: UNIVERSITY_COORDINATES.lng + 0.015 },
+      ];
+    }
   }
 
   // Format coordinates for OSRM: lng,lat;lng,lat...
@@ -56,20 +41,16 @@ async function computeRoadRoute(waypoints = [], enforceUniversityLoop = true, ou
   let isRoadSnapped = false;
 
   try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 6000);
-
     const response = await fetch(osrmUrl, {
-      signal: controller.signal,
+      signal: AbortSignal.timeout(3500),
       headers: { "User-Agent": "UniTrack-Transit-Fleet/1.0" },
     });
-    clearTimeout(timeoutId);
 
     if (response.ok) {
       const data = await response.json();
       if (data.code === "Ok" && data.routes && data.routes.length > 0) {
         const osrmRoute = data.routes[0];
-        // OSRM coordinates are [lng, lat], Leaflet polyline expects [lat, lng]
+        // OSRM coordinates are [lng, lat], map expects [lat, lng]
         outboundWaypoints = osrmRoute.geometry.coordinates.map(([lng, lat]) => [
           Number(lat.toFixed(6)),
           Number(lng.toFixed(6)),
@@ -96,19 +77,17 @@ async function computeRoadRoute(waypoints = [], enforceUniversityLoop = true, ou
     console.warn("[RoutingService] OSRM query fallback:", err.message);
   }
 
-  // Fallback interpolation if OSRM unavailable
+  // Fallback interpolation if OSRM unavailable or timed out
   if (outboundWaypoints.length < 2) {
     outboundWaypoints = interpolateDenseCoordinates(points);
     outboundDistanceKm = calculateApproxDistanceKm(outboundWaypoints);
-    outboundDurationMin = Math.round((outboundDistanceKm / 25) * 60);
-    streetNames.add("University Campus Road");
-    streetNames.add("Connecting Arterial Corridor");
+    outboundDurationMin = Math.max(1, Math.round((outboundDistanceKm / 25) * 60));
+    streetNames.add("Transit Arterial Corridor");
   }
 
-  // If outAndBack is enabled ("route should be same in going and back again"):
-  // The return journey traverses the EXACT SAME road and street waypoints in reverse!
+  // If outAndBack is enabled:
+  // The return journey traverses the EXACT SAME road waypoints in reverse!
   if (outAndBack) {
-    // Reverse the outbound road waypoints (excluding duplicate turnaround point)
     const returnWaypoints = [...outboundWaypoints].reverse().slice(1);
     const fullRoundTripWaypoints = [...outboundWaypoints, ...returnWaypoints];
     const totalDistanceKm = Number((outboundDistanceKm * 2).toFixed(1));
@@ -142,12 +121,14 @@ async function computeRoadRoute(waypoints = [], enforceUniversityLoop = true, ou
 
 /**
  * Generates symmetric stop sequence for out-and-back route:
- * [University, S1, S2, S3, S2, S1, University]
+ * [S1, S2, S3, S2, S1]
  */
 function generateSymmetricStops(outboundStopIds = []) {
-  const cleanStops = outboundStopIds.filter((id) => id && id !== "STP-04");
-  const returnStops = [...cleanStops].reverse().slice(1); // avoid duplicating turnaround stop
-  return ["STP-04", ...cleanStops, ...returnStops, "STP-04"];
+  if (!Array.isArray(outboundStopIds) || outboundStopIds.length === 0) return [];
+  const cleanStops = outboundStopIds.filter(Boolean);
+  if (cleanStops.length <= 1) return cleanStops;
+  const returnStops = [...cleanStops].reverse().slice(1);
+  return [...cleanStops, ...returnStops];
 }
 
 /**

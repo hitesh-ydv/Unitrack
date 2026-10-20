@@ -1,6 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
-import { settingsService } from "../services/settingsService";
-import { MOCK_MAP_TILE_PROVIDERS } from "../data/mockData";
+import { settingsService, MAP_TILE_PROVIDERS } from "../services/settingsService";
 
 const SettingsContext = createContext();
 
@@ -18,14 +17,23 @@ export const SettingsProvider = ({ children }) => {
     enableAutoAlerts: true,
   });
 
-  const [tileProviders, setTileProviders] = useState(MOCK_MAP_TILE_PROVIDERS);
+  const [tileProviders] = useState(MAP_TILE_PROVIDERS);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    settingsService.getSettings().then((data) => {
-      setSettings(data);
-      setLoading(false);
-    });
+    settingsService
+      .getSettings()
+      .then((data) => {
+        if (data && typeof data === "object") {
+          setSettings((prev) => ({ ...prev, ...data }));
+        }
+      })
+      .catch((err) => {
+        console.warn("Could not load backend settings:", err);
+      })
+      .finally(() => {
+        setLoading(false);
+      });
   }, []);
 
   const updateSettings = async (newConfig) => {

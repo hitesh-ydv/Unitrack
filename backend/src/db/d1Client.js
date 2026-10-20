@@ -37,10 +37,27 @@ class D1Client {
         const dbPath = path.join(dataDir, "unitrack.db");
         this.localDb = new DatabaseSync(dbPath);
         console.log(`[Database] Local SQLite initialized at: ${dbPath}`);
+        try {
+          this.localDb.exec("ALTER TABLE routes ADD COLUMN streetsTraversed TEXT;");
+        } catch (_) {}
+        try {
+          this.localDb.exec("ALTER TABLE routes ADD COLUMN outAndBack INTEGER DEFAULT 1;");
+        } catch (_) {}
       } catch (err) {
         console.error("[Database] Failed to initialize local SQLite database:", err);
       }
     }
+
+    setTimeout(() => this.ensureSchema(), 1500);
+  }
+
+  async ensureSchema() {
+    try {
+      await this.execute("ALTER TABLE routes ADD COLUMN streetsTraversed TEXT");
+    } catch (_) {}
+    try {
+      await this.execute("ALTER TABLE routes ADD COLUMN outAndBack INTEGER DEFAULT 1");
+    } catch (_) {}
   }
 
   /**

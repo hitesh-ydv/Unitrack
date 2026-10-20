@@ -53,4 +53,15 @@ router.put("/", async (req, res, next) => {
   }
 });
 
+// POST /api/settings/reset-database - Purge all previous data from Cloudflare D1
+router.post("/reset-database", async (req, res, next) => {
+  try {
+    const clearDb = require("../db/clearDb");
+    await clearDb();
+    res.json({ success: true, message: "Cloudflare D1 database cleared successfully." });
+  } catch (err) {
+    next(err);
+  }
+});
+
 module.exports = router;

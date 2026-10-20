@@ -92,6 +92,13 @@ router.put("/:id", async (req, res, next) => {
     }
 
     const updated = { ...existing, ...req.body };
+    if (req.body.routeId === null) {
+      updated.routeId = null;
+      updated.routeName = req.body.routeName || "Unassigned";
+    } else if (req.body.routeId && !req.body.routeName) {
+      const r = await db.queryFirst("SELECT name FROM routes WHERE id = ?", [req.body.routeId]);
+      if (r) updated.routeName = r.name;
+    }
 
     await db.execute(
       `UPDATE buses SET
@@ -133,6 +140,78 @@ router.delete("/:id", async (req, res, next) => {
     next(err);
   }
 });
+
+// Realtime bus location update handler (ideal for Postman & GPS telematics devices)
+async function updateBusLocationHandler(req, res, next) {
+  try {
+    const rawBusId = req.params.id || req.body.busId || req.body.id || req.body.busNumber;
+    if (!rawBusId) {
+      return res.status(400).json({ message: "Bus ID, busId, or busNumber is required." });
+    }
+
+    const busId = decodeURIComponent(String(rawBusId)).trim();
+    let bus = await db.queryFirst(
+      "SELECT * FROM buses WHERE id = ? OR LOWER(id) = LOWER(?) OR LOWER(busNumber) = LOWER(?)",
+      [busId, busId, busId]
+    );
+    if (!bus) {
+      return res.status(404).json({ message: `Bus '${busId}' not found.` });
+    }
+
+    const lat = req.body.currentLat !== undefined
+      ? Number(req.body.currentLat)
+      : (req.body.lat !== undefined ? Number(req.body.lat) : bus.currentLat);
+
+    const lng = req.body.currentLng !== undefined
+      ? Number(req.body.currentLng)
+      : (req.body.lng !== undefined ? Number(req.body.lng) : (req.body.lon !== undefined ? Number(req.body.lon) : bus.currentLng));
+
+    if (isNaN(lat) || isNaN(lng)) {
+      return res.status(400).json({ message: "Valid latitude and longitude are required (currentLat / currentLng or lat / lng)." });
+    }
+
+    const speed = req.body.speedKmh !== undefined
+      ? Number(req.body.speedKmh)
+      : (req.body.speed !== undefined ? Number(req.body.speed) : bus.speedKmh);
+
+    const heading = req.body.headingDeg !== undefined
+      ? Number(req.body.headingDeg)
+      : (req.body.heading !== undefined ? Number(req.body.heading) : bus.headingDeg);
+
+    const delayMinutes = req.body.delayMinutes !== undefined
+      ? Number(req.body.delayMinutes)
+      : (req.body.delay !== undefined ? Number(req.body.delay) : bus.delayMinutes);
+
+    const nextStopName = req.body.nextStopName || req.body.nextStop || bus.nextStopName;
+    const gpsStatus = req.body.gpsStatus || "live";
+    const status = req.body.status || bus.status || "active";
+    const lastPing = new Date().toISOString();
+
+    await db.execute(
+      `UPDATE buses SET
+        currentLat = ?, currentLng = ?, speedKmh = ?, headingDeg = ?,
+        delayMinutes = ?, nextStopName = ?, gpsStatus = ?, status = ?, lastPing = ?
+       WHERE id = ?`,
+      [lat, lng, speed, heading, delayMinutes, nextStopName, gpsStatus, status, lastPing, bus.id]
+    );
+
+    const updated = await db.queryFirst("SELECT * FROM buses WHERE id = ?", [bus.id]);
+    res.json({
+      success: true,
+      message: `Realtime location updated for ${updated.busNumber}`,
+      bus: updated,
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// POST or PATCH /api/buses/:id/location
+router.post("/:id/location", updateBusLocationHandler);
+router.patch("/:id/location", updateBusLocationHandler);
+
+// POST /api/buses/location (with busId in body)
+router.post("/location", updateBusLocationHandler);
 
 // POST /api/buses/batch-location - Batch update bus locations (live telemetry)
 router.post("/batch-location", async (req, res, next) => {

@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import {
   X,
   Phone,
@@ -14,6 +14,9 @@ import {
   Fuel,
   Users,
   ArrowLeft,
+  Copy,
+  Check,
+  Code2,
 } from "lucide-react";
 import { computeRouteStopProgress } from "../../utils/routeProgress";
 
@@ -26,6 +29,9 @@ export const BusInfoPanel = ({
   onToggleFollow,
   onBackToList,
 }) => {
+  const [copiedId, setCopiedId] = useState(false);
+  const [copiedPayload, setCopiedPayload] = useState(false);
+
   if (!bus) return null;
 
   const isDelayed = (bus.delayMinutes || 0) > 5;
@@ -60,7 +66,32 @@ export const BusInfoPanel = ({
 
   // Location and ping time
   const locationText = bus.nextStopName ? `Near ${bus.nextStopName}` : "Campus Route Corridor";
-  const lastPingText = bus.lastPing ? "Updated just now" : "Heartbeat live";
+  const lastPingText = bus.lastPing ? new Date(bus.lastPing).toLocaleTimeString() : "Live";
+
+  const handleCopyId = () => {
+    navigator.clipboard.writeText(bus.id);
+    setCopiedId(true);
+    setTimeout(() => setCopiedId(false), 2000);
+  };
+
+  const postmanSnippet = JSON.stringify(
+    {
+      currentLat: +(Number(bus.currentLat || 12.9716) + 0.001).toFixed(6),
+      currentLng: +(Number(bus.currentLng || 77.5946) + 0.001).toFixed(6),
+      speedKmh: 40,
+      headingDeg: (Number(bus.headingDeg) || 0) + 15,
+      delayMinutes: bus.delayMinutes || 0,
+      nextStopName: bus.nextStopName || "Next Stop",
+    },
+    null,
+    2
+  );
+
+  const handleCopyPayload = () => {
+    navigator.clipboard.writeText(postmanSnippet);
+    setCopiedPayload(true);
+    setTimeout(() => setCopiedPayload(false), 2000);
+  };
 
   return (
     <div className="bg-slate-900/95 border border-slate-800 rounded-2xl shadow-xl backdrop-blur-md overflow-hidden flex flex-col h-full transition-all">
@@ -82,6 +113,15 @@ export const BusInfoPanel = ({
               <span className="font-extrabold text-lg text-white tracking-tight">
                 {bus.busNumber}
               </span>
+              <button
+                type="button"
+                onClick={handleCopyId}
+                title="Click to copy Bus ID"
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-mono bg-indigo-500/15 hover:bg-indigo-500/25 text-indigo-400 border border-indigo-500/30 font-bold cursor-pointer transition-colors"
+              >
+                <span>ID: {bus.id}</span>
+                {copiedId ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3 opacity-60" />}
+              </button>
               <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold border ${statusBadgeClass}`}>
                 {statusLabel}
               </span>
@@ -153,6 +193,30 @@ export const BusInfoPanel = ({
           </div>
         </div>
 
+        {/* Current GPS Coordinates & Postman Helper Box */}
+        <div className="bg-indigo-950/30 border border-indigo-500/30 rounded-xl p-3 text-xs space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="font-semibold text-indigo-300 flex items-center gap-1.5">
+              <Code2 className="w-3.5 h-3.5" />
+              Postman Realtime GPS API
+            </span>
+            <button
+              type="button"
+              onClick={handleCopyPayload}
+              className="text-[10px] text-indigo-300 hover:text-white flex items-center gap-1 font-medium bg-indigo-600/30 hover:bg-indigo-600/50 px-2 py-0.5 rounded cursor-pointer transition-colors"
+            >
+              {copiedPayload ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+              <span>{copiedPayload ? "Copied" : "Copy Body"}</span>
+            </button>
+          </div>
+          <div className="font-mono text-[11px] text-slate-300 bg-slate-950/80 p-2 rounded-lg border border-slate-800/80 space-y-1">
+            <div className="text-emerald-400 font-bold truncate">POST /api/buses/{bus.id}/location</div>
+            <div className="text-[10px] text-slate-400">
+              Lat: <span className="text-white font-semibold">{bus.currentLat}</span>, Lng: <span className="text-white font-semibold">{bus.currentLng}</span>
+            </div>
+          </div>
+        </div>
+
         {/* Current Location & Ping Time */}
         <div className="flex items-start gap-2.5 text-xs bg-slate-800/30 p-2.5 rounded-xl border border-slate-800/60">
           <MapPin className="w-4 h-4 text-indigo-400 shrink-0 mt-0.5" />
@@ -162,7 +226,7 @@ export const BusInfoPanel = ({
             </span>
             <span className="text-[11px] text-slate-400 flex items-center gap-1 mt-0.5">
               <Clock className="w-3 h-3 text-slate-500" />
-              {lastPingText}
+              Last heartbeat: {lastPingText}
             </span>
           </div>
         </div>

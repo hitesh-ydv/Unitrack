@@ -21,7 +21,7 @@ import {
   createStopMarkerIcon,
 } from "../../utils/googleMapsTheme";
 import { computeRouteStopProgress } from "../../utils/routeProgress";
-import { MOCK_CAMPUS_CENTER } from "../../data/mockData";
+import { DEFAULT_MAP_CENTER } from "../../utils/mapUtils";
 
 export const GoogleFleetMap = ({
   buses = [],
@@ -57,8 +57,8 @@ export const GoogleFleetMap = ({
 
     if (!mapInstanceRef.current) {
       const initialCenter = {
-        lat: MOCK_CAMPUS_CENTER.lat || 12.9716,
-        lng: MOCK_CAMPUS_CENTER.lng || 77.5946,
+        lat: DEFAULT_MAP_CENTER.lat,
+        lng: DEFAULT_MAP_CENTER.lng,
       };
 
       const map = new window.google.maps.Map(mapContainerRef.current, {

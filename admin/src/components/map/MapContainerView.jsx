@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from "react";
 import { MapContainer, TileLayer, useMap, useMapEvents } from "react-leaflet";
 import { useSettings } from "../../context/SettingsContext";
-import { MOCK_CAMPUS_CENTER } from "../../data/mockData";
+import { DEFAULT_MAP_CENTER } from "../../utils/mapUtils";
 
 // Helper component to smoothly re-center or follow a moving bus (Zomato/Swiggy rider style)
 export const MapController = ({
@@ -65,7 +65,7 @@ const MapClickHandler = ({ onMapClick }) => {
 };
 
 export const MapContainerView = ({
-  center = [MOCK_CAMPUS_CENTER.lat, MOCK_CAMPUS_CENTER.lng],
+  center = [DEFAULT_MAP_CENTER.lat, DEFAULT_MAP_CENTER.lng],
   zoom = 13,
   flyToTarget = null,
   followTarget = null,

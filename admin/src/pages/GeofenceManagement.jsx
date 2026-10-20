@@ -18,7 +18,8 @@ import { Modal } from "../components/common/Modal";
 import { ConfirmDialog } from "../components/common/ConfirmDialog";
 import { geofenceService } from "../services/geofenceService";
 import { useToast } from "../context/ToastContext";
-import { MOCK_CAMPUS_CENTER } from "../data/mockData";
+
+const CAMPUS_CENTER = { lat: 12.9716, lng: 77.5946 };
 
 export const GeofenceManagement = () => {
   const [geofences, setGeofences] = useState([]);
@@ -234,7 +235,7 @@ export const GeofenceManagement = () => {
 
       {/* Interactive Map Visualizer */}
       <div className="h-[360px] rounded-2xl overflow-hidden border border-slate-800 shadow-2xl relative">
-        <MapContainerView center={[MOCK_CAMPUS_CENTER.lat, MOCK_CAMPUS_CENTER.lng]} zoom={13}>
+        <MapContainerView center={[CAMPUS_CENTER.lat, CAMPUS_CENTER.lng]} zoom={13}>
           <GeofenceLayer geofences={geofences} showGeofences={true} />
         </MapContainerView>
 

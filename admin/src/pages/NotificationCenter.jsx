@@ -10,7 +10,6 @@ import {
   Filter,
   Plus,
 } from "lucide-react";
-import { MOCK_NOTIFICATIONS } from "../data/mockData";
 import { useToast } from "../context/ToastContext";
 import { Modal } from "../components/common/Modal";
 import { notificationService } from "../services/notificationService";
@@ -34,12 +33,12 @@ export const NotificationCenter = () => {
     notificationService
       .getAll()
       .then((data) => {
-        setNotifications(data || []);
+        setNotifications(Array.isArray(data) ? data : []);
         setLoading(false);
       })
       .catch((err) => {
         console.error("Failed to load notifications:", err);
-        setNotifications(MOCK_NOTIFICATIONS);
+        setNotifications([]);
         setLoading(false);
       });
   }, []);

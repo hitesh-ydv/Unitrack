@@ -1,15 +1,14 @@
 import React from "react";
 import { Polyline, Marker, Popup } from "react-leaflet";
 import { createStopIcon, createUniversityIcon } from "../../utils/mapUtils";
-import { MOCK_STOPS } from "../../data/mockData";
 
 export const RoutePolylineLayer = ({
   routes = [],
   activeRouteId = null,
   showAllRoutes = true,
-  stopsList = null,
+  stopsList = [],
 }) => {
-  const availableStops = stopsList && stopsList.length > 0 ? stopsList : MOCK_STOPS;
+  const availableStops = stopsList || [];
 
   return (
     <>

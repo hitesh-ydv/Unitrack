@@ -14,7 +14,6 @@ import {
   ExternalLink,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
-import { MOCK_NOTIFICATIONS } from "../data/mockData";
 import { useNavigate } from "react-router-dom";
 
 import { notificationService } from "../services/notificationService";
@@ -33,8 +32,8 @@ export const Header = ({ onToggleSidebar }) => {
   useEffect(() => {
     notificationService
       .getAll()
-      .then((data) => setNotifications(data || []))
-      .catch(() => setNotifications(MOCK_NOTIFICATIONS));
+      .then((data) => setNotifications(Array.isArray(data) ? data : []))
+      .catch(() => setNotifications([]));
   }, []);
 
   // Close menus on outside click
@@ -184,15 +183,15 @@ export const Header = ({ onToggleSidebar }) => {
             className="flex items-center gap-2.5 p-1.5 rounded-xl hover:bg-slate-800/80 transition-colors cursor-pointer border border-transparent hover:border-slate-700/60"
           >
             <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-500 flex items-center justify-center text-white font-bold text-xs shadow-md">
-              {currentUser.name
+              {(currentUser?.name || "Admin")
                 .split(" ")
                 .map((n) => n[0])
                 .join("")
                 .slice(0, 2)}
             </div>
             <div className="hidden md:block text-left">
-              <div className="text-xs font-bold text-white leading-tight">{currentUser.name}</div>
-              <div className="text-[10px] text-indigo-400 font-medium">{currentUser.role}</div>
+              <div className="text-xs font-bold text-white leading-tight">{currentUser?.name || "Administrator"}</div>
+              <div className="text-[10px] text-indigo-400 font-medium">{currentUser?.role || "Super Admin"}</div>
             </div>
             <ChevronDown className="w-4 h-4 text-slate-400" />
           </button>
@@ -200,11 +199,11 @@ export const Header = ({ onToggleSidebar }) => {
           {isProfileOpen && (
             <div className="absolute right-0 mt-2 w-64 bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl overflow-hidden z-50 animate-in fade-in-50 zoom-in-95">
               <div className="p-4 border-b border-slate-800 bg-slate-950/40">
-                <p className="text-xs font-bold text-white">{currentUser.name}</p>
-                <p className="text-[11px] text-slate-400 truncate">{currentUser.email}</p>
+                <p className="text-xs font-bold text-white">{currentUser?.name || "Administrator"}</p>
+                <p className="text-[11px] text-slate-400 truncate">{currentUser?.email || "admin@apex.edu"}</p>
                 <div className="mt-2 inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-indigo-500/10 text-indigo-400 text-[10px] font-semibold border border-indigo-500/20">
                   <Shield className="w-3 h-3" />
-                  <span>{currentUser.role}</span>
+                  <span>{currentUser?.role || "Super Admin"}</span>
                 </div>
               </div>
 

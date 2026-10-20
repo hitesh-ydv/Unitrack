@@ -166,9 +166,12 @@ export const BusSearchList = ({
                     <Bus className="w-4 h-4" />
                   </div>
                   <div className="min-w-0">
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5 flex-wrap">
                       <span className="font-bold text-xs text-white">
                         {bus.busNumber}
+                      </span>
+                      <span className="px-1.5 py-0.2 rounded text-[9px] font-mono bg-indigo-500/15 text-indigo-400 border border-indigo-500/30 font-bold">
+                        {bus.id}
                       </span>
                       <span className="text-[10px] text-slate-500 truncate">
                         {bus.plateNumber}

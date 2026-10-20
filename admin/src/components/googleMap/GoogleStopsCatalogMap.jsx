@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import { GOOGLE_MAPS_DARK_THEME } from "../../utils/googleMapsTheme";
 import { UNIVERSITY_LOCATION } from "../../services/routeService";
-import { MOCK_CAMPUS_CENTER } from "../../data/mockData";
+import { DEFAULT_MAP_CENTER } from "../../utils/mapUtils";
 
 export const GoogleStopsCatalogMap = ({
   stops = [],
@@ -61,8 +61,8 @@ export const GoogleStopsCatalogMap = ({
 
     if (!mapInstanceRef.current) {
       const initialCenter = {
-        lat: UNIVERSITY_LOCATION.lat || MOCK_CAMPUS_CENTER.lat || 12.9716,
-        lng: UNIVERSITY_LOCATION.lng || MOCK_CAMPUS_CENTER.lng || 77.5946,
+        lat: UNIVERSITY_LOCATION.lat || DEFAULT_MAP_CENTER.lat,
+        lng: UNIVERSITY_LOCATION.lng || DEFAULT_MAP_CENTER.lng,
       };
 
       const map = new window.google.maps.Map(mapContainerRef.current, {

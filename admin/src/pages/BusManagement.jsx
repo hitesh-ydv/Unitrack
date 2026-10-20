@@ -205,7 +205,21 @@ export const BusManagement = () => {
             <Bus className="w-4 h-4" />
           </div>
           <div>
-            <span className="font-bold text-white block">{val}</span>
+            <div className="flex items-center gap-1.5">
+              <span className="font-bold text-white block">{val}</span>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  navigator.clipboard.writeText(row.id);
+                  toast.success("Copied Bus ID", `Copied '${row.id}' to clipboard`);
+                }}
+                title="Click to copy Bus ID"
+                className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-indigo-500/15 hover:bg-indigo-500/25 text-indigo-400 border border-indigo-500/30 font-bold cursor-pointer transition-colors"
+              >
+                {row.id}
+              </button>
+            </div>
             <span className="text-[10px] text-slate-400 font-mono">{row.plateNumber}</span>
           </div>
         </div>

@@ -1,40 +1,36 @@
-import apiClient, { USE_MOCK } from "./api";
-import { MOCK_MAP_TILE_PROVIDERS } from "../data/mockData";
+import apiClient from "./api";
 
-const DEFAULT_SETTINGS = {
-  universityName: "Apex University of Science & Technology",
-  campusBranch: "Main Technology Campus (East Hub)",
-  emergencyHotline: "+91 (080) 2841-9999",
-  transportEmail: "transport-desk@apex.edu",
-  selectedTileProviderId: "osm",
-  gpsPingIntervalSec: 5,
-  delayThresholdMin: 10,
-  overspeedLimitKmh: 50,
-  geofenceBufferMeters: 50,
-  enableAutoAlerts: true,
-  enableSmsNotifications: true,
-  enableParentPortalSync: true,
-};
-
-let settingsCache = { ...DEFAULT_SETTINGS };
+export const MAP_TILE_PROVIDERS = [
+  {
+    id: "osm",
+    name: "OpenStreetMap Standard (Default)",
+    url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+  },
+  {
+    id: "carto_light",
+    name: "CartoDB Positron (Enterprise Clean)",
+    url: "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
+    attribution: '&copy; <a href="https://carto.com/">CARTO</a> &copy; OpenStreetMap',
+  },
+  {
+    id: "carto_dark",
+    name: "CartoDB Dark Matter (High Contrast Dark)",
+    url: "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
+    attribution: '&copy; <a href="https://carto.com/">CARTO</a> &copy; OpenStreetMap',
+  },
+];
 
 export const settingsService = {
   getSettings: async () => {
-    if (USE_MOCK) {
-      return new Promise((resolve) => setTimeout(() => resolve({ ...settingsCache }), 100));
-    }
     return apiClient.get("/settings");
   },
 
   updateSettings: async (newSettings) => {
-    if (USE_MOCK) {
-      settingsCache = { ...settingsCache, ...newSettings };
-      return new Promise((resolve) => setTimeout(() => resolve({ ...settingsCache }), 150));
-    }
     return apiClient.put("/settings", newSettings);
   },
 
   getTileProviders: () => {
-    return MOCK_MAP_TILE_PROVIDERS;
+    return MAP_TILE_PROVIDERS;
   },
 };

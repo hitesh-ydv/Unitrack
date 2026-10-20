@@ -57,14 +57,7 @@ export const RouteBuilder = () => {
 
   // 1. Source (Starting Point) & Destination (University Terminal)
   const [sourceStop, setSourceStop] = useState(null);
-  const [destinationStop, setDestinationStop] = useState({
-    id: "STP-04",
-    code: UNIVERSITY_LOCATION.code,
-    name: UNIVERSITY_LOCATION.name,
-    lat: UNIVERSITY_LOCATION.lat,
-    lng: UNIVERSITY_LOCATION.lng,
-    isUniversity: true,
-  });
+  const [destinationStop, setDestinationStop] = useState(null);
 
   // 2. Ordered Intermediate Stops in Route (between Source & Destination)
   const [routeStops, setRouteStops] = useState([]);
@@ -104,34 +97,40 @@ export const RouteBuilder = () => {
         busService.getAll(),
       ]);
 
+      const stopsList = Array.isArray(stopData) ? stopData : [];
       setRoutes(routeData || []);
-      setAllStops(stopData || []);
+      setAllStops(stopsList);
       setBuses(busData || []);
 
-      // Default Source: first non-university stop from Stop Management
-      const initialSource = stopData?.find((s) => s.code !== "S-001") || stopData?.[0];
-      if (initialSource && !sourceStop) {
-        setSourceStop(initialSource);
-      }
+      if (stopsList.length > 0) {
+        // Find university / destination terminal
+        const univStop =
+          stopsList.find(
+            (s) => s.isUniversity || s.code === "S-001" || /university|campus|terminal|main/i.test(s.name)
+          ) || (stopsList.length > 1 ? stopsList[stopsList.length - 1] : stopsList[0]);
 
-      // Default Destination: University terminal
-      const univStop = stopData?.find((s) => s.code === "S-001") || {
-        id: "STP-04",
-        code: UNIVERSITY_LOCATION.code,
-        name: UNIVERSITY_LOCATION.name,
-        lat: UNIVERSITY_LOCATION.lat,
-        lng: UNIVERSITY_LOCATION.lng,
-        isUniversity: true,
-      };
-      setDestinationStop(univStop);
+        // Find initial departure source
+        const initialSource =
+          stopsList.find((s) => s.id !== univStop?.id) || stopsList[0];
 
-      // Default intermediate stops (e.g. 2nd & 3rd stops)
-      if (stopData?.length > 2 && routeStops.length === 0) {
-        const intermediate = stopData.filter(
-          (s) => s.id !== initialSource?.id && s.code !== "S-001"
-        ).slice(0, 2);
-        setRouteStops(intermediate);
-        triggerSnapRoad(initialSource, intermediate, univStop, true);
+        // Intermediate stops between source and destination
+        const intermediate = stopsList
+          .filter((s) => s.id !== initialSource?.id && s.id !== univStop?.id)
+          .slice(0, 2);
+
+        if (!sourceStop && initialSource) {
+          setSourceStop(initialSource);
+        }
+        if (!destinationStop && univStop) {
+          setDestinationStop(univStop);
+        }
+
+        if (routeStops.length === 0) {
+          setRouteStops(intermediate);
+          if (initialSource && univStop) {
+            triggerSnapRoad(initialSource, intermediate, univStop, isOutAndBack);
+          }
+        }
       }
     } catch {
       toast.error("Error", "Failed to load stops, routes, and bus fleet.");
@@ -236,26 +235,52 @@ export const RouteBuilder = () => {
 
     // 2. Resilient fallback to backend/OSRM routeService.snapRoad
     const rawWaypoints = [
-      [src.lat, src.lng],
-      ...stopsList.map((s) => [s.lat, s.lng]),
-      [dest.lat, dest.lng],
+      [Number(src.lat), Number(src.lng)],
+      ...(stopsList || []).filter((s) => s && s.lat && s.lng).map((s) => [Number(s.lat), Number(s.lng)]),
+      [Number(dest.lat), Number(dest.lng)],
     ];
 
     try {
       const snapped = await routeService.snapRoad(rawWaypoints, false, outAndBack);
-      if (snapped && snapped.waypoints) {
+      if (snapped && Array.isArray(snapped.waypoints) && snapped.waypoints.length > 1) {
         setRoadPolyline(snapped.waypoints);
         setDistanceKm(snapped.distanceKm || 14.0);
         setEstimatedDurationMin(snapped.estimatedDurationMin || 35);
         if (snapped.streetsTraversed?.length) {
           setStreetsTraversed(snapped.streetsTraversed);
         }
+        setIsSnapping(false);
+        return;
       }
     } catch (err) {
       console.warn("Road snapping fallback error:", err);
-    } finally {
-      setIsSnapping(false);
     }
+
+    // 3. Direct / interpolated coordinates fallback so route polyline is NEVER blank
+    let fallbackPath = rawWaypoints;
+    if (outAndBack) {
+      const returnCoords = [...rawWaypoints].reverse().slice(1);
+      fallbackPath = [...rawWaypoints, ...returnCoords];
+    }
+    setRoadPolyline(fallbackPath);
+
+    let approxDist = 0;
+    for (let i = 0; i < rawWaypoints.length - 1; i++) {
+      const [lat1, lon1] = rawWaypoints[i];
+      const [lat2, lon2] = rawWaypoints[i + 1];
+      const R = 6371;
+      const dLat = ((lat2 - lat1) * Math.PI) / 180;
+      const dLon = ((lon2 - lon1) * Math.PI) / 180;
+      const a =
+        Math.sin(dLat / 2) ** 2 +
+        Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLon / 2) ** 2;
+      approxDist += R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    }
+    const oneWayKm = Number(Math.max(1, approxDist).toFixed(1));
+    const totalDist = outAndBack ? Number((oneWayKm * 2).toFixed(1)) : oneWayKm;
+    setDistanceKm(totalDist);
+    setEstimatedDurationMin(Math.max(5, Math.round((totalDist / 25) * 60)));
+    setIsSnapping(false);
   };
 
   // Recompute when outAndBack toggles
@@ -405,6 +430,21 @@ export const RouteBuilder = () => {
     const stopIds = [sourceStop.id, ...routeStops.map((s) => s.id), destinationStop.id];
     const targetRouteId = routeId || `RT-${String(routes.length + 1).padStart(2, "0")}`;
 
+    const computedWaypoints =
+      roadPolyline && roadPolyline.length > 1
+        ? roadPolyline
+        : [
+            [Number(sourceStop.lat), Number(sourceStop.lng)],
+            ...routeStops.filter((s) => s && s.lat && s.lng).map((s) => [Number(s.lat), Number(s.lng)]),
+            [Number(destinationStop.lat), Number(destinationStop.lng)],
+            ...(isOutAndBack
+              ? [
+                  ...routeStops.filter((s) => s && s.lat && s.lng).map((s) => [Number(s.lat), Number(s.lng)]).reverse(),
+                  [Number(sourceStop.lat), Number(sourceStop.lng)],
+                ]
+              : []),
+          ];
+
     const payload = {
       id: targetRouteId,
       name: routeName.trim(),
@@ -417,7 +457,7 @@ export const RouteBuilder = () => {
       sourceStopId: sourceStop.id,
       destinationStopId: destinationStop.id,
       stops: stopIds,
-      waypoints: roadPolyline.length > 1 ? roadPolyline : [[sourceStop.lat, sourceStop.lng], [destinationStop.lat, destinationStop.lng]],
+      waypoints: computedWaypoints,
       streetsTraversed: streetsTraversed,
       activeBusId: selectedBusId || null,
       outAndBack: isOutAndBack,
@@ -438,10 +478,9 @@ export const RouteBuilder = () => {
         // Clear this route from other buses if re-assigning
         const otherAssignedBuses = buses.filter((b) => b.id !== selectedBusId && b.routeId === targetRouteId);
         for (const ob of otherAssignedBuses) {
-          await busService.update(ob.id, { routeId: null });
+          await busService.update(ob.id, { routeId: null, routeName: "Unassigned" });
         }
-        await busService.update(selectedBusId, { routeId: targetRouteId });
-        await routeService.assignRouteToBus(selectedBusId, payload);
+        await busService.update(selectedBusId, { routeId: targetRouteId, routeName: routeName.trim() });
         toast.success(
           "Bus Fleet Synchronized",
           `${routeName} assigned to ${assignedBus ? assignedBus.busNumber : "bus"}.`
@@ -450,13 +489,15 @@ export const RouteBuilder = () => {
         // If bus assignment removed, unassign from buses
         const prevBuses = buses.filter((b) => b.routeId === routeId);
         for (const pb of prevBuses) {
-          await busService.update(pb.id, { routeId: null });
+          await busService.update(pb.id, { routeId: null, routeName: "Unassigned" });
         }
       }
 
       await loadData();
-    } catch {
-      toast.error("Save Error", "Failed to save route to database.");
+    } catch (err) {
+      console.error("Save route error:", err);
+      const errMsg = err?.response?.data?.message || err?.message || "Failed to save route to database.";
+      toast.error("Save Error", errMsg);
     } finally {
       setIsSaving(false);
     }
@@ -472,7 +513,7 @@ export const RouteBuilder = () => {
       // Unassign any buses associated with this route
       const assignedBuses = buses.filter((b) => b.routeId === target.id);
       for (const b of assignedBuses) {
-        await busService.update(b.id, { routeId: null });
+        await busService.update(b.id, { routeId: null, routeName: "Unassigned" });
       }
 
       toast.success("Route Deleted", `${target.name} permanently removed.`);
@@ -513,7 +554,14 @@ export const RouteBuilder = () => {
     setSourceStop(src);
     setDestinationStop(dest);
     setRouteStops(intermediate);
-    triggerSnapRoad(src, intermediate, dest, route.outAndBack !== undefined ? Boolean(route.outAndBack) : true);
+    if (route.waypoints && Array.isArray(route.waypoints) && route.waypoints.length > 1) {
+      setRoadPolyline(route.waypoints);
+      if (route.distanceKm) setDistanceKm(route.distanceKm);
+      if (route.estimatedDurationMin) setEstimatedDurationMin(route.estimatedDurationMin);
+      if (route.streetsTraversed) setStreetsTraversed(route.streetsTraversed);
+    } else {
+      triggerSnapRoad(src, intermediate, dest, route.outAndBack !== undefined ? Boolean(route.outAndBack) : true);
+    }
 
     setActiveTab("studio");
     toast.info("Editing Route", `Loaded "${route.name}" into Route Builder Studio.`);
@@ -528,13 +576,20 @@ export const RouteBuilder = () => {
     setSelectedBusId("");
     setIsOutAndBack(true);
 
-    const initialSource = allStops.find((s) => s.code !== "S-001") || allStops[0];
-    const univStop = allStops.find((s) => s.code === "S-001") || destinationStop;
+    const univStop =
+      allStops.find(
+        (s) => s.isUniversity || s.code === "S-001" || /university|campus|terminal|main/i.test(s.name)
+      ) || (allStops.length > 1 ? allStops[allStops.length - 1] : allStops[0]);
 
-    setSourceStop(initialSource);
-    setDestinationStop(univStop);
-    setRouteStops([]);
-    triggerSnapRoad(initialSource, [], univStop, true);
+    const initialSource = allStops.find((s) => s.id !== univStop?.id) || allStops[0];
+    const intermediate = allStops.filter((s) => s.id !== initialSource?.id && s.id !== univStop?.id).slice(0, 2);
+
+    setSourceStop(initialSource || null);
+    setDestinationStop(univStop || null);
+    setRouteStops(intermediate || []);
+    if (initialSource && univStop) {
+      triggerSnapRoad(initialSource, intermediate, univStop, true);
+    }
     toast.info("New Route", "Ready to construct custom route.");
   };
 

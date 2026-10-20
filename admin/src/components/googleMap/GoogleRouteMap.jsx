@@ -13,7 +13,7 @@ import {
   X,
 } from "lucide-react";
 import { GOOGLE_MAPS_DARK_THEME } from "../../utils/googleMapsTheme";
-import { MOCK_CAMPUS_CENTER } from "../../data/mockData";
+import { DEFAULT_MAP_CENTER } from "../../utils/mapUtils";
 
 export const GoogleRouteMap = ({
   sourceStop,
@@ -90,8 +90,8 @@ export const GoogleRouteMap = ({
 
     if (!mapInstanceRef.current) {
       const initialCenter = {
-        lat: sourceStop?.lat || MOCK_CAMPUS_CENTER.lat || 12.9716,
-        lng: sourceStop?.lng || MOCK_CAMPUS_CENTER.lng || 77.5946,
+        lat: Number(sourceStop?.lat) || Number(destinationStop?.lat) || Number(allStops?.[0]?.lat) || DEFAULT_MAP_CENTER.lat,
+        lng: Number(sourceStop?.lng) || Number(destinationStop?.lng) || Number(allStops?.[0]?.lng) || DEFAULT_MAP_CENTER.lng,
       };
 
       const map = new window.google.maps.Map(mapContainerRef.current, {
@@ -345,34 +345,68 @@ export const GoogleRouteMap = ({
     }
     availableMarkersRef.current = newAvailMarkers;
 
-    // E. Snapped Road Polyline on Google Maps
-    if (roadPolyline && roadPolyline.length > 1) {
-      const pathCoords = roadPolyline.map(([lat, lng]) => new window.google.maps.LatLng(lat, lng));
+    // E. Snapped Road Polyline on Google Maps (with seamless fallback to stops path)
+    const polylineCoords =
+      roadPolyline && roadPolyline.length > 1
+        ? roadPolyline
+        : sourceStop?.lat && destinationStop?.lat
+        ? [
+            [Number(sourceStop.lat), Number(sourceStop.lng)],
+            ...(routeStops || [])
+              .filter((s) => s && s.lat && s.lng)
+              .map((s) => [Number(s.lat), Number(s.lng)]),
+            [Number(destinationStop.lat), Number(destinationStop.lng)],
+            ...(isOutAndBack
+              ? [
+                  ...(routeStops || [])
+                    .filter((s) => s && s.lat && s.lng)
+                    .map((s) => [Number(s.lat), Number(s.lng)])
+                    .reverse(),
+                  [Number(sourceStop.lat), Number(sourceStop.lng)],
+                ]
+              : []),
+          ]
+        : [];
 
-      // 1. Glow outer polyline
-      const glowPolyline = new window.google.maps.Polyline({
-        path: pathCoords,
-        geodesic: true,
-        strokeColor: routeColor,
-        strokeOpacity: 0.25,
-        strokeWeight: 10,
-        map,
-        zIndex: 10,
-      });
+    if (polylineCoords && polylineCoords.length > 1) {
+      const pathCoords = polylineCoords
+        .map((p) => {
+          const lat = Array.isArray(p) ? Number(p[0]) : Number(p.lat);
+          const lng = Array.isArray(p) ? Number(p[1]) : Number(p.lng);
+          if (isNaN(lat) || isNaN(lng)) return null;
+          return new window.google.maps.LatLng(lat, lng);
+        })
+        .filter(Boolean);
 
-      // 2. Main crisp route polyline
-      const mainPolyline = new window.google.maps.Polyline({
-        path: pathCoords,
-        geodesic: true,
-        strokeColor: routeColor,
-        strokeOpacity: 0.95,
-        strokeWeight: 4,
-        map,
-        zIndex: 20,
-      });
+      if (pathCoords.length > 1) {
+        pathCoords.forEach((pt) => bounds.extend(pt));
+        hasCoords = true;
 
-      glowPolylineRef.current = glowPolyline;
-      mainPolylineRef.current = mainPolyline;
+        // 1. Glow outer polyline
+        const glowPolyline = new window.google.maps.Polyline({
+          path: pathCoords,
+          geodesic: true,
+          strokeColor: routeColor,
+          strokeOpacity: 0.25,
+          strokeWeight: 10,
+          map,
+          zIndex: 10,
+        });
+
+        // 2. Main crisp route polyline
+        const mainPolyline = new window.google.maps.Polyline({
+          path: pathCoords,
+          geodesic: true,
+          strokeColor: routeColor,
+          strokeOpacity: 0.95,
+          strokeWeight: 4,
+          map,
+          zIndex: 20,
+        });
+
+        glowPolylineRef.current = glowPolyline;
+        mainPolylineRef.current = mainPolyline;
+      }
     }
 
     // Auto-fit bounds if we have coordinates
@@ -391,6 +425,7 @@ export const GoogleRouteMap = ({
     roadPolyline,
     routeColor,
     isLoaded,
+    isOutAndBack,
     showAllCatalogStops,
     clearMapElements,
     createMarkerIcon,

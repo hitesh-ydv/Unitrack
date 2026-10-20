@@ -128,19 +128,19 @@ export const LiveFleetTracking = () => {
         <div>
           <div className="flex items-center gap-2 mb-1">
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            <span className="text-xs font-semibold text-emerald-400">Google Maps JavaScript API</span>
+            <span className="text-xs font-semibold text-emerald-400">Live Backend API Telemetry</span>
             <span className="text-xs text-slate-600">&bull;</span>
-            <span className="text-xs text-slate-400">Live GPS Heartbeat</span>
+            <span className="text-xs text-slate-400">Postman / GPS Heartbeat</span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">
             Live Fleet Tracking
           </h1>
           <p className="text-xs text-slate-400 mt-0.5">
-            Real-time GPS coordinates, smooth marker interpolation, and route progression monitoring.
+            Real-time GPS coordinates synced live from backend API / Postman telemetry.
           </p>
         </div>
 
-        {/* Live Simulation Engine Bar */}
+        {/* Live Telemetry Polling Controls */}
         <div className="flex items-center gap-2 self-start sm:self-auto bg-slate-900/80 p-1.5 rounded-2xl border border-slate-800 shadow-md">
           {/* Play / Pause Toggle */}
           <button
@@ -153,7 +153,7 @@ export const LiveFleetTracking = () => {
             }`}
           >
             {isSimulating ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
-            <span>{isSimulating ? "Live Feed (60 FPS)" : "Paused"}</span>
+            <span>{isSimulating ? "Live Sync (Active)" : "Paused"}</span>
           </button>
 
           {/* Speed Multiplier (1x / 2x / 4x) */}
